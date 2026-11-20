@@ -1,4 +1,4 @@
-"""数据API发布接口：维护数据服务，覆盖保存配置、发布服务、停用服务等动作。"""
+"""数据API发布接口：维护数据服务，并支持按服务的输出数据集与查询参数做批量交付。"""
 from __future__ import annotations
 
 from typing import Any
@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.schemas import ActionResult, EntryPayload, PageResult
-from app.services.data_service import DataServiceService
+from app.services.data_service import POLICY_CONFIRMED, POLICIES, DataServiceService
 
 router = APIRouter(prefix="/api/data_service", tags=["数据API发布"])
 
@@ -37,6 +37,93 @@ def list_entries(
     extra = {k: v for k, v in request.query_params.items() if k not in ("keyword", "status", "page", "size") and v.strip()}
     items, total = service.list_entries(keyword=keyword, status=status, page=page, size=size, extra=extra)
     return PageResult(items=items, total=total, page=page, size=size)
+
+
+# ---- 批量交付 ---------------------------------------------------------
+# 注意：交付相关路由要写在 /{entry_id} 之前，否则 "deliveries" 会被当成数字 id。
+
+
+@router.get("/deliveries")
+def list_deliveries() -> dict[str, Any]:
+    """列出批量交付记录，最近的在前。"""
+    items = service.list_deliveries()
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/snapshots")
+def list_snapshots() -> dict[str, Any]:
+    """列出各输出数据集当前可用的数据截面及确认状态。"""
+    items = service.list_snapshots()
+    return {"items": items, "total": len(items), "policies": POLICIES}
+
+
+@router.post("/snapshots/{snapshot_no}/confirm", response_model=ActionResult)
+def confirm_snapshot(snapshot_no: str) -> ActionResult:
+    """服务确认某个数据截面，确认后「已确认一致」策略可选用。"""
+    snapshot, message = service.confirm_snapshot(snapshot_no)
+    if snapshot is None:
+        return ActionResult(ok=False, message=message)
+    summary = {key: val for key, val in snapshot.items() if key != "明细"}
+    return ActionResult(ok=True, message=message, entry=summary)
+
+
+@router.get("/deliveries/{delivery_no}")
+def get_delivery(delivery_no: str) -> dict[str, Any]:
+    """按交付编号回放当时的明细、金额与取数边界，不重新访问源数据。"""
+    detail = service.get_delivery_detail(delivery_no)
+    if detail is None:
+        raise HTTPException(status_code=404, detail=f"交付 {delivery_no} 不存在")
+    return detail
+
+
+@router.get("/deliveries/{delivery_no}/reconcile")
+def reconcile_delivery(delivery_no: str) -> dict[str, Any]:
+    """复核交付：留存明细与当前源数据逐条比对，列出差异。"""
+    result = service.reconcile(delivery_no)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"交付 {delivery_no} 不存在")
+    return result
+
+
+@router.post("/deliveries", response_model=ActionResult)
+def create_delivery(payload: EntryPayload) -> ActionResult:
+    """发起批量交付：按服务输出数据集与查询参数取截面明细，任一服务缺截面则挂起补取。"""
+    values = payload.values
+    services = values.get("服务编号") or values.get("services") or []
+    if isinstance(services, str):
+        services = [item for item in services.replace("，", ",").split(",") if item.strip()]
+    params = values.get("查询参数") or values.get("params") or {}
+    policy = str(values.get("截面策略") or values.get("policy") or POLICY_CONFIRMED)
+    delivery, message = service.create_delivery(list(services), dict(params), policy)
+    if delivery is None:
+        return ActionResult(ok=False, message=message)
+    return ActionResult(ok=delivery.get("状态") == "已交付", message=message, entry=delivery)
+
+
+@router.post("/deliveries/{delivery_no}/retry", response_model=ActionResult)
+def retry_delivery(delivery_no: str) -> ActionResult:
+    """对挂起交付按原截面策略补取；仍缺截面时保持挂起。"""
+    delivery, message = service.retry_delivery(delivery_no)
+    if delivery is None:
+        return ActionResult(ok=False, message=message)
+    return ActionResult(ok=delivery.get("状态") == "已交付", message=message, entry=delivery)
+
+
+@router.post("/source/{dataset}/corrections", response_model=ActionResult)
+def correct_source(dataset: str, payload: EntryPayload) -> ActionResult:
+    """更正源数据中的一笔金额，并生成待确认截面（不覆盖已确认截面）。"""
+    values = payload.values
+    doc_no = str(values.get("单据号") or values.get("doc_no") or "").strip()
+    field = str(values.get("字段") or values.get("field") or "").strip()
+    snapshot, message = service.correct_source(
+        dataset, doc_no, field, values.get("金额", values.get("value"))
+    )
+    if snapshot is None:
+        return ActionResult(ok=False, message=message)
+    return ActionResult(ok=True, message=message, entry=snapshot)
+
+
+# ---- 单条服务 ---------------------------------------------------------
 
 
 @router.get("/{entry_id}", response_model=dict)

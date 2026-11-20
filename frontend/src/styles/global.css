@@ -42,3 +42,18 @@ body { margin: 0; background: #f6f8fb; color: #1f2937; }
 .modal-field span{font-size:13px;color:var(--muted)}
 .modal-field input{padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px}
 .modal-foot{display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border);padding:12px 18px}
+.section-title { font-size: 14px; margin: 18px 0 8px; }
+.modal-card.wide { width: 760px; }
+.data-table.compact th, .data-table.compact td { padding: 5px 8px; font-size: 12px; }
+.kv-row { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; align-items: baseline; }
+.kv-row span { color: var(--muted); }
+.hint-text { color: var(--muted); font-size: 12px; margin: 4px 0; }
+.warn-text { color: #b54708; font-size: 12px; margin: 4px 0; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.check-item { display: flex; gap: 6px; align-items: center; font-size: 13px; padding: 2px 0; }
+.tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; }
+.tag-ok { background: #e7f6ec; color: #087443; }
+.tag-warn { background: #fef0c7; color: #b54708; }
+.modal-field select, .modal-field input { padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
+.notice-bar { background: #eef4ff; border: 1px solid #c7dbff; color: #1f3a68; border-radius: 8px; padding: 8px 12px; font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.inline-input { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; width: 190px; }

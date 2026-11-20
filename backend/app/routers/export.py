@@ -1,4 +1,4 @@
-"""数据导出接口：维护导出任务，覆盖开始导出、重新导出、标记失败等动作。"""
+"""数据导出接口：维护导出任务，并把批量交付落成导出包（记录 + 关联依据）。"""
 from __future__ import annotations
 
 from typing import Any
@@ -37,6 +37,46 @@ def list_entries(
     extra = {k: v for k, v in request.query_params.items() if k not in ("keyword", "status", "page", "size") and v.strip()}
     items, total = service.list_entries(keyword=keyword, status=status, page=page, size=size, extra=extra)
     return PageResult(items=items, total=total, page=page, size=size)
+
+
+# ---- 按批量交付编号交付 ------------------------------------------------
+# 这些路由要写在 /{entry_id} 之前，否则 "packages" 会被当成数字 id。
+
+
+@router.get("/packages")
+def list_packages() -> dict[str, Any]:
+    """列出已落成的交付导出包。"""
+    items = service.list_packages()
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/packages/{delivery_no}")
+def get_package(delivery_no: str) -> dict[str, Any]:
+    """读取某次交付的导出包：记录、金额与关联依据。"""
+    package = service.get_package(delivery_no)
+    if package is None:
+        raise HTTPException(status_code=404, detail=f"交付 {delivery_no} 尚未导出")
+    return package
+
+
+@router.delete("/packages/{delivery_no}", response_model=ActionResult)
+def delete_package(delivery_no: str) -> ActionResult:
+    """删除导出包不影响批量交付本身的留存明细。"""
+    if not service.delete_package(delivery_no):
+        return ActionResult(ok=False, message=f"交付 {delivery_no} 尚未导出")
+    return ActionResult(ok=True, message=f"交付 {delivery_no} 的导出包已删除")
+
+
+@router.post("/packages", response_model=ActionResult)
+def create_package(payload: EntryPayload) -> ActionResult:
+    """按批量交付编号生成导出包，交付各自记录及其关联依据。"""
+    values = payload.values
+    delivery_no = str(values.get("交付编号") or values.get("delivery_no") or "").strip()
+    export_format = str(values.get("导出格式") or values.get("format") or "Excel").strip()
+    package, message = service.file_delivery(delivery_no, export_format)
+    if package is None:
+        return ActionResult(ok=False, message=message)
+    return ActionResult(ok=True, message=message, entry=package)
 
 
 @router.get("/{entry_id}", response_model=dict)

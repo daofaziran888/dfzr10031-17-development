@@ -8,6 +8,7 @@
       <div class="page-actions">
         <button class="btn primary" type="button" @click="openCreate">登记数据服务</button>
         <button class="btn" type="button" @click="exportRows">导出数据API发布清单</button>
+        <RouterLink class="btn" to="/delivery">前往批量交付</RouterLink>
       </div>
     </header>
 
